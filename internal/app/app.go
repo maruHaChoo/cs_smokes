@@ -1,28 +1,39 @@
 package app
 
 import (
-    "context"
-    "fmt"
+	"context"
+	"fmt"
 
-    memorystorage "cs-smokes-bot/internal/adapters/storage/memory"
-    tgadapter "cs-smokes-bot/internal/adapters/telegram"
-    "cs-smokes-bot/internal/config"
-    tgtransport "cs-smokes-bot/internal/transport/telegram"
-    "cs-smokes-bot/internal/usecase"
+	"cs-smokes-bot/internal/adapters/storage/postgres"
+	tgadapter "cs-smokes-bot/internal/adapters/telegram"
+	"cs-smokes-bot/internal/config"
+	tgtransport "cs-smokes-bot/internal/transport/telegram"
+	"cs-smokes-bot/internal/usecase"
 )
 
 func Run(ctx context.Context) error {
-    cfg, err := config.Load()
-    if err != nil { return err }
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
-    tg, err := tgadapter.NewClient(cfg.BotToken)
-    if err != nil { return err }
+	tg, err := tgadapter.NewClient(cfg.BotToken)
+	if err != nil {
+		return err
+	}
 
-    sessionRepo := memorystorage.NewSessionRepository()
-    smokeRepo := memorystorage.NewSmokeRepository()
-    navigationService := usecase.NewNavigationService(sessionRepo, smokeRepo, tg)
-    handler := tgtransport.NewHandler(tg, navigationService)
+	pool, err := postgres.NewPool(cfg.DatabaseURL)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
 
-    fmt.Println("bot is running")
-    return handler.Start(ctx)
+	sessionRepo := postgres.NewSessionRepository(pool)
+	smokeRepo := postgres.NewSmokeRepository(pool)
+
+	navigationService := usecase.NewNavigationService(sessionRepo, smokeRepo, tg)
+	handler := tgtransport.NewHandler(tg, navigationService)
+
+	fmt.Println("bot is running")
+	return handler.Start(ctx)
 }
